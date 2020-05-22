@@ -60,6 +60,9 @@ var blockList = new Parser()
 
 var typeParser = new Parser()
 	.endianess('little')
+	// Kirkman debugging note: 
+	// The following method can be moved anywhere in these chains to debug the state of things.
+	// .skip(function () { ; console.log(this); return 0; })
 	.int16('version')
 	.uint8('depth')
 	.uint8('is_array')
@@ -72,6 +75,8 @@ var typeParser = new Parser()
 var typeTreeParser = new Parser()
 	.endianess('little')
 	.int32('class_id')
+	.uint8('unk0') // Kirkman added in 2020
+	.int16('script_id') // Kirkman added in 2020
 	.skip(function () { return (this.class_id < 0) ? 0x20 : 0x10; })
 	.uint32('num_nodes')
 	.uint32('buffer_bytes')
@@ -110,15 +115,17 @@ var assetParser = new Parser()
 	.array('objects', {
 		type: Parser.start()
 			.endianess('little')
-			.skip(3) // TODO: Align at 4-byte instead of hardcode
+			// Kirkman commented this out in 2020
+			// .skip(3)
 			.int32('path_id1')
 			.int32('path_id2')
 			.uint32('data_offset')
 			.uint32('size')
 			.int32('type_id')
-			.int16('class_id')
-			.int16('unk1')
-			.int8('unk2')
+			// Kirkman commented these out in 2020
+			// .int16('class_id')
+			// .int16('unk1')
+			// .int8('unk2')
 		,
 		length: 'num_objects'
 	})
@@ -179,8 +186,19 @@ function read_value(object, type, objectBuffer, offset) {
 		result = objectBuffer.readFloatLE(offset);
 		offset += 4;
 	}
+	// Kirkman added in 2020. This is probably unnecessary, but UnityPack has it.
+	else if (t == "double") {
+		offset = alignOff(offset);
+		result = objectBuffer.readDoubleLE(offset);
+		offset += 4;
+	}
 	else if (t == "string") {
-		let size = objectBuffer.readUInt32LE(offset);
+		// Kirkman changed in 2020
+		let size = type.size;
+		if (type.size == -1) {
+			size = objectBuffer.readUInt32LE(offset);
+		}
+
 		offset += 4;
 		result = String.fromCharCode.apply(null, objectBuffer.slice(offset, offset + size));
 
@@ -316,6 +334,16 @@ function parseAssetBundle(data) {
 	standardTypes.types.forEach((type) => { buildTypeTree(type); });*/
 
 	let parsedObjects = [];
+
+	// Kirkman added in 2020
+	// Following UnityPack, the class_id for a child object now needs 
+	// to come from the parent's type_id. I couldn't figure out how 
+	// to do that using binary-parser, so I'll just do it here.
+	asset.objects.forEach((object, index) => {
+		object.class_id = asset.typeStruct.types[object.type_id].class_id;
+		object.type_id = asset.typeStruct.types[object.type_id].class_id;
+	});
+
 	asset.objects.forEach((object, index) => {
 		var objectBuffer = Buffer.from(bundle.assets.slice(asset.data_offset + object.data_offset, asset.data_offset + object.data_offset + object.size));
 
@@ -331,8 +359,12 @@ function parseAssetBundle(data) {
 			}
 		}
 
+
 		let parsedObject = read_value(object, type_tree.node_data[0], objectBuffer, 0).result;
+		// Kirkman: Not sure where this line came from.
+		parsedObject.objectBuffer = objectBuffer;
 		parsedObject.type = type_tree.node_data[0].type;
+
 
 		parsedObjects.push(parsedObject);
 	});
@@ -344,7 +376,7 @@ function parseAssetBundle(data) {
 	parsedObjects.forEach(object => {
 		if (object.type == 'Texture2D') {
 			if ((object.m_TextureFormat != 10) && (object.m_TextureFormat != 12)) {
-				console.error("Only supports DXT1 / DXT5 formats for images!");
+				// console.error("Only supports DXT1 / DXT5 formats for images!");
 				return undefined;
 			}
 
@@ -355,7 +387,7 @@ function parseAssetBundle(data) {
 				object.rawBitmap = dxt.DXT1Decoder(object['image data'], object.m_Width, object.m_Height);
 			}
 			delete object['image data'];
-			console.assert(object.rawBitmap.length % 4 == 0);
+			// console.assert(object.rawBitmap.length % 4 == 0);
 			imageTexture = object;
 		}
 		if (object.type == 'Sprite') {
