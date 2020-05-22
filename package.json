@@ -1,0 +1,19 @@
+{
+  "name": "unityfs-asset-parser",
+  "version": "0.0.4",
+  "description": "UnityFS Asset Bundle parser",
+  "main": "src/index.js",
+  "types": "unityfs-asset-parser.d.ts",
+  "dependencies": {
+    "buffer": "^5.0.8",
+    "lz4js": "^0.2.0"
+  },
+  "devDependencies": {
+    "pngjs": "^3.3.0"
+  },
+  "scripts": {
+    "test": "node test/test.js"
+  },
+  "author": "IAmPicard",
+  "license": "GPL-3.0"
+}
